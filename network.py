@@ -1,9 +1,7 @@
 import tensorflow as tf
 
-import numpy as np
 
-
-def train_simple(train_data, train_labels, validation_data, validation_labels):
+def train_simple(features):
     x = tf.placeholder(tf.float32, [None, 784])
     y_ = tf.placeholder(tf.float32, [None, 10])
 
@@ -19,19 +17,21 @@ def train_simple(train_data, train_labels, validation_data, validation_labels):
 
     sess = tf.Session()
     tf.global_variables_initializer().run(session=sess)
+    print("Simple NN training is running")
     for i in range(100):
-        sess.run(train_step, feed_dict={x: train_data, y_: train_labels})
-        train_accuracy = accuracy.eval(feed_dict={x: train_data, y_: train_labels}, session=sess)
+        batch_xs, batch_ys = features.train.next_batch(1000)
+        sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
+        train_accuracy = accuracy.eval(feed_dict={x: batch_xs, y_: batch_ys}, session=sess)
         print('step %d, training accuracy %g' % (i, train_accuracy))
 
-    validation_accuracy = accuracy.eval(feed_dict={x: validation_data, y_: validation_labels},
+    validation_accuracy = accuracy.eval(feed_dict={x: features.test.images, y_: features.test.labels},
                                         session=sess)
     print('------------------------------------------')
     print('Resulting accuracy %g' % validation_accuracy)
     print('------------------------------------------')
 
 
-def train_cnn(train_data, train_labels, validation_data, validation_labels):
+def train_cnn(features, conf, print_accuracy=False):
     """
     Train using convolutional neural network
     Structure of network is following:
@@ -39,81 +39,47 @@ def train_cnn(train_data, train_labels, validation_data, validation_labels):
         Max Pooling layer 2 --> Fully connected layer --> Output layer
 
     """
-    # reshape so that we have 28x28 images
-    train_data = np.reshape(train_data, [-1, 28, 28, 1])
-    validation_data = np.reshape(validation_data, [-1, 28, 28, 1])
-
-    ###################################################
-    # specify input data
-    ###################################################
-
+    # --- specify input data
     inputs = tf.placeholder(tf.float32, [None, 28, 28, 1])
     labels = tf.placeholder(tf.float32, [None, 10])
 
-    ###################################################
-    # specify layers of network
-    ###################################################
-
-    # CONVOLUTIONAL LAYER 1
-    conv1 = tf.layers.conv2d(
-        inputs=inputs,
-        filters=32,
-        kernel_size=[5, 5],
-        padding="same",
-        activation=tf.nn.relu)
-    # MAX POOLING LAYER 1
+    # --- specify layers of network
+    # TODO try another strides for conv layer
+    # TODO try custom filter initialization
+    # TODO try to get rid of pooling layer
+    conv1 = tf.layers.conv2d(inputs=inputs, filters=conf[0], kernel_size=[5, 5], padding="same", activation=tf.nn.relu)
     pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
-    # CONVOLUTIONAL LAYER 2
-    conv2 = tf.layers.conv2d(
-        inputs=pool1,
-        filters=64,
-        kernel_size=[5, 5],
-        padding="same",
-        activation=tf.nn.relu)
-    # MAX POOLING LAYER 1
+    conv2 = tf.layers.conv2d(inputs=pool1, filters=conf[0], kernel_size=[5, 5], padding="same", activation=tf.nn.relu)
     pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
-    # flatten last layer
-    pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * 64])
-    # FULLY CONNECTED LAYER
+    pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * conf[0]])
     dense = tf.layers.dense(inputs=pool2_flat, units=1024, activation=tf.nn.relu)
-    # OUTPUT LAYER
     logits = tf.layers.dense(inputs=dense, units=10)
 
-    ###################################################
-    # specify cost function and how training is performed
-    ###################################################
+    # --- specify cost function and how training is performed
+    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
+    train_step = tf.train.AdamOptimizer(0.015).minimize(cross_entropy)
 
-    #TODO try some other cost function
-    cross_entropy = tf.reduce_mean(-tf.reduce_sum(labels * tf.log(tf.nn.softmax(logits)), axis=1))
-    train_step = tf.train.GradientDescentOptimizer(0.1).minimize(cross_entropy)
-
-    ###################################################
-    # specify function to calculate accuracy
-    ###################################################
-
+    # --- specify function to calculate accuracy
     correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-    ###################################################
-    # actual training
-    ###################################################
-    sess = tf.Session()
-    tf.global_variables_initializer().run(session=sess)
-    for i in range(1000):
-        p = np.random.randint(1000, train_data.shape[0])
-        sess.run(train_step, feed_dict={inputs: train_data[p-1000:p],
-                                        labels: train_labels[p-1000:p]})
-        train_accuracy = accuracy.eval(feed_dict={inputs: train_data[p-1000:p],
-                                                  labels: train_labels[p-1000:p]},
-                                       session=sess)
-        print('step %d, training accuracy %g' % (i, train_accuracy))
-
-    ###################################################
-    # check accuracy on validation data
-    ###################################################
-    validation_accuracy = accuracy.eval(feed_dict={inputs: validation_data[:1000],
-                                                   labels: validation_labels[:1000]},
-                                        session=sess)
-    print('------------------------------------------')
-    print('Resulting accuracy %g' % validation_accuracy)
-    print('------------------------------------------')
+    # --- actual training
+    with tf.Session() as sess:
+        tf.global_variables_initializer().run(session=sess)
+        batch_size = 1000
+        # TODO find out how to save state of network
+        for i in range(conf[1]):
+            batch_xs, batch_ys = features.train.next_batch(batch_size)  # random batch of data
+            sess.run(train_step, feed_dict={inputs: batch_xs, labels: batch_ys})
+            if print_accuracy:
+                # check accuracy on training data
+                train_accuracy = sess.run(accuracy, feed_dict={inputs: batch_xs, labels: batch_ys})
+                print('step %d, training accuracy %g' % (i, train_accuracy))
+    
+        # --- check accuracy on validation data
+        validation_accuracy = 0.0
+        batch_number = len(features.test.images) // batch_size
+        for i in range(batch_number):
+            validation_accuracy += sess.run(accuracy, feed_dict={inputs: features.test.images[i*1000: (i+1)*1000],
+                                                                 labels: features.test.labels[i*1000: (i+1)*1000]})
+        return validation_accuracy / batch_number
