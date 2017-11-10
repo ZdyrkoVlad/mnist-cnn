@@ -3,12 +3,12 @@ from tensorflow.contrib.learn.python.learn.datasets.mnist import read_data_sets
 import itertools
 
 configurations = [[5], [5]]
-mnist = read_data_sets('.\\data', one_hot=True, reshape=True)
+#mnist = read_data_sets('.\\data', one_hot=True, reshape=True)
 # TODO deal with runtime statictics
 # TODO deal with hyperparameters
 
 
-def train(data, configuration, max_epochs=1001):
+def train(data, configuration, max_epochs=1):
     tf.reset_default_graph()
 
     # --- specify input data
@@ -45,6 +45,7 @@ def train(data, configuration, max_epochs=1001):
 
     # TODO implement early stopping
     sess.run(tf.global_variables_initializer())
+    '''
     for i in range(max_epochs):
         batch_xs, batch_ys = data.train.next_batch(1000)  # random batch of data
         if i % 5 == 0:
@@ -57,10 +58,15 @@ def train(data, configuration, max_epochs=1001):
                                options=run_options, run_metadata=run_metadata)
             train_writer.add_run_metadata(run_metadata, 'step%03d' % i)
             train_writer.add_summary(summ, i)
-        else:
+        else:     
             summ, _ = sess.run([summary, train_step], feed_dict={inputs: batch_xs, labels: batch_ys})
-            train_writer.add_summary(summ, i)
+            train_writer.add_summary(summ, i) 
+    '''
+
+    var = [v for v in tf.trainable_variables() if v.name == "conv1/kernel:0"]
+    values = sess.run(var)
+    print(values)
 
 if __name__ == '__main__':
     all_configurations = list(itertools.product(*configurations))
-    train(mnist, all_configurations[0])
+    train([], all_configurations[0])
